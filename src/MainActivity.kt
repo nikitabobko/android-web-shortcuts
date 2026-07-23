@@ -34,12 +34,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.getSystemService
 import androidx.core.net.toUri
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 private const val SHORTCUT_ID_PREFIX = "bobko-web-shortcut-"
@@ -76,6 +80,7 @@ class MainActivity : ComponentActivity() {
     val context = LocalContext.current
     var shortcuts by remember { mutableStateOf(emptyList<WebShortcut>()) }
     var editor by remember { mutableStateOf<EditorState?>(null) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(refreshKey) {
         shortcuts = loadShortcuts(context)
@@ -104,7 +109,9 @@ class MainActivity : ComponentActivity() {
             )
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(shortcuts, key = { it.id }) { shortcut ->
@@ -130,10 +137,12 @@ class MainActivity : ComponentActivity() {
                 editor = null
             },
             onSave = { name, url ->
-                if (upsertShortcut(context, state.id, name.trim(), url.trim())) {
-                    @Suppress("AssignedValueIsNeverRead") // false positive
-                    editor = null
-                    shortcuts = loadShortcuts(context)
+                scope.launch {
+                    if (upsertShortcut(context, state.id, name.trim(), url.trim())) {
+                        @Suppress("AssignedValueIsNeverRead") // false positive
+                        editor = null
+                        shortcuts = loadShortcuts(context)
+                    }
                 }
             },
         )
@@ -181,18 +190,22 @@ class MainActivity : ComponentActivity() {
     )
 }
 
-private fun loadShortcuts(context: Context): List<WebShortcut> {
+private suspend fun loadShortcuts(context: Context): List<WebShortcut> {
     val shortcutManager = context.getSystemService<ShortcutManager>() ?: return emptyList()
-    return shortcutManager.pinnedShortcuts
-        .filter { it.id.startsWith(SHORTCUT_ID_PREFIX) }
-        .map { info ->
-            WebShortcut(
-                id = info.id,
-                name = info.shortLabel?.toString().orEmpty(),
-                // The publisher app keeps access to the intent, so we can recover the URL.
-                url = info.intent?.data?.toString().orEmpty(),
-            )
-        }
+    return withContext(Dispatchers.IO) {
+        // 'shortcutManager.pinnedShortcuts' may take several seconds to complete,
+        // so it should only be called from a worker thread.
+        shortcutManager.pinnedShortcuts
+            .filter { it.id.startsWith(SHORTCUT_ID_PREFIX) }
+            .map { info ->
+                WebShortcut(
+                    id = info.id,
+                    name = info.shortLabel?.toString().orEmpty(),
+                    // The publisher app keeps access to the intent, so we can recover the URL.
+                    url = info.intent?.data?.toString().orEmpty(),
+                )
+            }
+    }
 }
 
 private fun upsertShortcut(
