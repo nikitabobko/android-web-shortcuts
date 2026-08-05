@@ -7,6 +7,13 @@ Simple Android app for creating Web Shortcuts on homescreen
 Download the APK file directly from [GitHub releases](https://github.com/nikitabobko/android-web-shortcuts/releases)
 (there are no automatic updates, but the app is simple enough that you won't need updates anyway)
 
+## Motivation
+
+Your browser's "Add to home" button will try to use PWAs for sites that support that.
+I don't want PWAs.
+I want to open the site in my browser with all my extensions installed.
+And I want to open the site's particular URL not their front page.
+
 ## Building
 
 ```shell
