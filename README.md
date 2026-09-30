@@ -14,6 +14,11 @@ I don't want PWAs.
 I want to open the site in my browser with all my extensions installed.
 And I want to open the site's particular URL not their front page.
 
+## Supported schemas
+
+- http / https
+- mailto
+
 ## Building
 
 ```shell

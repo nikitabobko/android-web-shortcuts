@@ -12,8 +12,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,6 +28,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -37,6 +40,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.getSystemService
@@ -133,15 +138,15 @@ class MainActivity : ComponentActivity() {
         ShortcutEditorDialog(
             state = state,
             onDismiss = {
-                @Suppress("AssignedValueIsNeverRead") // false positive
                 editor = null
             },
-            onSave = { name, url ->
+            onSave = { name, url, scheme ->
                 scope.launch {
-                    if (upsertShortcut(context, state.id, name.trim(), url.trim())) {
-                        @Suppress("AssignedValueIsNeverRead") // false positive
+                    if (upsertShortcut(context, state.id, name.trim(), url.trim(), scheme)) {
                         editor = null
                         shortcuts = loadShortcuts(context)
+                    } else {
+                        // todo show the error
                     }
                 }
             },
@@ -152,17 +157,18 @@ class MainActivity : ComponentActivity() {
 @Composable private fun ShortcutEditorDialog(
     state: EditorState,
     onDismiss: () -> Unit,
-    onSave: (name: String, url: String) -> Unit,
+    onSave: (name: String, url: String, scheme: Scheme) -> Unit,
 ) {
     var name by remember(state) { mutableStateOf(state.name) }
     var url by remember(state) { mutableStateOf(state.url) }
+    val scheme = Scheme.deduceFromUri(url.trim())
     val creating = state.id == null
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (creating) "New shortcut" else "Edit shortcut") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -170,17 +176,33 @@ class MainActivity : ComponentActivity() {
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                Spacer(Modifier.height(16.dp))
+
+                Text("Supported URL schemes: ${Scheme.entries.joinToString()}", color = disabledTextColor)
+                Spacer(Modifier.height(4.dp))
+                val isError = url.isNotBlank() && scheme == null
                 OutlinedTextField(
                     value = url,
                     onValueChange = { url = it },
                     label = { Text("Shortcut URL") },
+                    isError = isError,
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
+                    supportingText = {
+                        Text(
+                            "Unrecognized URL scheme",
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.visible(isError)
+                        )
+                    }
                 )
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(name, url) }) {
+            TextButton(
+                onClick = { scheme?.let { onSave(name, url, it) } },
+                enabled = name.isNotBlank() && url.isNotBlank() && scheme != null,
+            ) {
                 Text(if (creating) "Create" else "Save")
             }
         },
@@ -208,19 +230,29 @@ private suspend fun loadShortcuts(context: Context): List<WebShortcut> {
     }
 }
 
+private enum class Scheme {
+    http, mailto;
+
+    companion object {
+        fun deduceFromUri(uri: String): Scheme? = when {
+            uri.startsWith("mailto:") -> mailto
+            uri.startsWith("http://") || uri.startsWith("https://") -> http
+            else -> null
+        }
+    }
+}
+
 private fun upsertShortcut(
     context: Context,
     id: String?,
     name: String,
-    rawUrl: String,
+    url: String,
+    scheme: Scheme,
 ): Boolean {
-    if (name.isBlank() || rawUrl.isBlank()) {
+    if (name.isBlank() || url.isBlank()) {
         Toast.makeText(context, "Please fill in both fields", Toast.LENGTH_SHORT).show()
         return false
     }
-
-    // Ensure the URL has a scheme so the browser can handle it.
-    val url = if (rawUrl.contains("://")) rawUrl else "https://$rawUrl"
 
     val shortcutManager = context.getSystemService<ShortcutManager>()
     if (shortcutManager == null || !shortcutManager.isRequestPinShortcutSupported) {
@@ -228,14 +260,22 @@ private fun upsertShortcut(
         return false
     }
 
-    val intent = Intent(Intent.ACTION_VIEW, url.toUri()).apply {
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    val action = when (scheme) {
+        Scheme.http -> Intent.ACTION_VIEW
+        Scheme.mailto -> Intent.ACTION_SENDTO
+    }
+
+    val intent = Intent(action, url.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+    val icon = when (scheme) {
+        Scheme.http -> android.graphics.drawable.Icon.createWithResource(context, R.mipmap.ic_launcher)
+        Scheme.mailto -> android.graphics.drawable.Icon.createWithResource(context, R.mipmap.ic_shortcut_mailto)
     }
 
     val shortcut = ShortcutInfo.Builder(context, id ?: "$SHORTCUT_ID_PREFIX${UUID.randomUUID()}")
         .setShortLabel(name)
         .setLongLabel(name)
-        .setIcon(android.graphics.drawable.Icon.createWithResource(context, R.mipmap.ic_launcher))
+        .setIcon(icon)
         .setIntent(intent)
         .build()
 
@@ -250,3 +290,8 @@ private fun upsertShortcut(
     }
     return true
 }
+
+private val disabledTextColor: Color
+    @Composable get() = TextFieldDefaults.colors().disabledTextColor
+
+fun Modifier.visible(state: Boolean): Modifier = if (state) alpha(1f) else alpha(0f)

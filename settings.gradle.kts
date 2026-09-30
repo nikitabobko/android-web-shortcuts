@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Web-Shortcuts"
+rootProject.name = "AndroidWebShortcuts"
