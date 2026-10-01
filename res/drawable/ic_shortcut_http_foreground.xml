@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Standard Material "bookmark" glyph (24dp), scaled 2.5x and centered
+         within the 72dp adaptive-icon safe zone. -->
+    <group android:scaleX="2.5" android:scaleY="2.5" android:translateX="24" android:translateY="24">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M17,3H7c-1.1,0 -1.99,0.9 -1.99,2L5,21l7,-3 7,3V5c0,-1.1 -0.9,-2 -2,-2z" />
+    </group>
+</vector>

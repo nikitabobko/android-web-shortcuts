@@ -268,7 +268,7 @@ private fun upsertShortcut(
     val intent = Intent(action, url.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
     val icon = when (scheme) {
-        Scheme.http -> android.graphics.drawable.Icon.createWithResource(context, R.mipmap.ic_launcher)
+        Scheme.http -> android.graphics.drawable.Icon.createWithResource(context, R.mipmap.ic_shortcut_http)
         Scheme.mailto -> android.graphics.drawable.Icon.createWithResource(context, R.mipmap.ic_shortcut_mailto)
     }
 
